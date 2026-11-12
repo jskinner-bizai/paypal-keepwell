@@ -47,20 +47,29 @@ export async function processEvent(store: Store, adapter: PayPalAdapter, event: 
   }
   if (prior) return prior;
   if (source === "paypal" && event.event_type === "CUSTOMER.DISPUTE.CREATED") throw new InputError("Dispute transaction-to-customer correlation is not configured");
-  const customer = source === "simulation" && simulationCustomerId ? store.demoCustomer(simulationCustomerId)
-    : typeof event.resource.id === "string" ? store.customerByResource(event.resource.id, event.event_type === "INVOICING.INVOICE.UPDATED" ? "invoice" : "subscription", source) : undefined;
-  if (!customer) throw new InputError("No registered customer matches this resource");
+  // PayPal's Invoicing v2 webhook wraps the invoice in resource.invoice.
+  // Keep the original signed envelope for verification, receipts and idempotency.
   const invoice = event.event_type === "INVOICING.INVOICE.UPDATED";
+  let resource = event.resource;
+  if (invoice && Object.hasOwn(resource, "invoice")) {
+    if (!object(resource.invoice) || ["id", "detail", "status", "due_amount"].some(key => Object.hasOwn(resource, key))) {
+      throw new InputError("Malformed or ambiguous invoice resource");
+    }
+    resource = resource.invoice;
+  }
+  const customer = source === "simulation" && simulationCustomerId ? store.demoCustomer(simulationCustomerId)
+    : typeof resource.id === "string" ? store.customerByResource(resource.id, invoice ? "invoice" : "subscription", source) : undefined;
+  if (!customer) throw new InputError("No registered customer matches this resource");
   let valueAtRiskCents = customer.monthlyValueCents;
   if (invoice) {
-    const detail = object(event.resource.detail) ? event.resource.detail : {};
+    const detail = object(resource.detail) ? resource.detail : {};
     const due = typeof detail.payment_term === "object" && object(detail.payment_term) ? detail.payment_term.due_date : undefined;
     if (typeof due !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(due) || !Number.isFinite(Date.parse(`${due}T00:00:00Z`)) || new Date(`${due}T00:00:00Z`).toISOString().slice(0, 10) !== due
-      || due >= now.toISOString().slice(0, 10) || !["SENT", "PARTIALLY_PAID"].includes(String(event.resource.status))) {
+      || due >= now.toISOString().slice(0, 10) || !["SENT", "UNPAID", "PARTIALLY_PAID"].includes(String(resource.status))) {
       throw new InputError("Invoice is not unpaid and past due");
     }
-    if (event.resource.id !== customer.invoiceId) throw new InputError("Invoice does not match the registered customer");
-    const amount = event.resource.due_amount;
+    if (resource.id !== customer.invoiceId) throw new InputError("Invoice does not match the registered customer");
+    const amount = resource.due_amount;
     if (!object(amount) || amount.currency_code !== "USD" || typeof amount.value !== "string" || !/^(0|[1-9]\d{0,6})(?:\.\d{1,2})?$/.test(amount.value)) throw new InputError("Invoice needs a valid USD outstanding amount");
     const [dollars, cents = ""] = amount.value.split(".");
     valueAtRiskCents = Number(dollars) * 100 + Number(cents.padEnd(2, "0"));
@@ -103,3 +112,4 @@ export function simulatedEvent(customer: import("./types").Customer, scenario: S
       : { id: customer.subscriptionId },
   };
 }
+
