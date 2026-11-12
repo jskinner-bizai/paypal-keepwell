@@ -75,3 +75,63 @@ test("verified sandbox fixture requires explicit typed mapping and remains human
     await assert.rejects(ingestPayPalWebhook(store, adapter("SUCCESS", []), { ...event, resource: { id: "other" } }, headers(), now), /different content/);
   } finally { store.close(); }
 });
+
+// Sanitized contract regression: the actual sandbox event observed on 2026-11-12
+// used resource.invoice. Verification below is injected, NOT real delivery proof.
+test("nested invoice envelope preserves verification, raw receipt and idempotency", async () => {
+  const store = new Store(":memory:");
+  try {
+    const customer = fixture(store);
+    store.registerSandboxResource(customer.id, "invoice", customer.invoiceId!);
+    const base = simulatedEvent(customer, "past_due", now);
+    for (const status of ["SENT", "UNPAID", "PARTIALLY_PAID"]) {
+      const event = { ...base, id: `NESTED-${status}`, resource: { invoice: { ...base.resource, status, due_amount: { currency_code: "USD", value: "1.00" } } } };
+      const calls: string[] = [];
+      const sandbox = adapter("SUCCESS", calls);
+      const verify = sandbox.verifyWebhook.bind(sandbox);
+      sandbox.verifyWebhook = async (raw, h) => { assert.deepEqual(raw, event); return verify(raw, h); };
+      const receipt = await ingestPayPalWebhook(store, sandbox, event, headers(), now);
+      assert.equal(receipt.decision.valueAtRiskCents, 100);
+      assert.equal(receipt.decision.action, "human_save_task");
+      assert.equal(receipt.decision.concessionCents, 0);
+      assert.equal(receipt.decision.context.source, "paypal_sandbox");
+      assert.equal(calls.length, 3);
+      const raw = JSON.parse(String(store.db.prepare("SELECT payload FROM webhook_events WHERE id=?").get(event.id)!.payload));
+      assert.deepEqual(raw.resource, event.resource);
+      assert.equal((await ingestPayPalWebhook(store, adapter("SUCCESS", []), event, headers(), now)).duplicate, true);
+      await assert.rejects(ingestPayPalWebhook(store, adapter("SUCCESS", []), { ...event, resource: event.resource.invoice }, headers(), now), /different content/);
+    }
+    assert.equal(store.dashboard().eventCount, 0);
+  } finally { store.close(); }
+});
+
+test("nested invoice rejects malformed identity, amounts, dates and paid states before reporting", async () => {
+  const store = new Store(":memory:");
+  try {
+    const customer = fixture(store);
+    const base = simulatedEvent(customer, "past_due", now);
+    const nested = { ...base, resource: { invoice: base.resource } };
+    await assert.rejects(ingestPayPalWebhook(store, adapter("SUCCESS", []), nested, headers(), now), /No registered/);
+    store.registerSandboxResource(customer.id, "invoice", customer.invoiceId!);
+    const invalid = [
+      { invoice: null }, { invoice: [] }, { invoice: { ...base.resource }, id: customer.invoiceId },
+      { invoice: { ...base.resource }, due_amount: { currency_code: "USD", value: "1.00" } },
+      ...["PAID", "CANCELLED", "DRAFT", "REFUNDED"].map(status => ({ invoice: { ...base.resource, status } })),
+      { invoice: { ...base.resource, id: customer.subscriptionId } },
+      { invoice: { ...base.resource, id: store.dashboard().customers[1].invoiceId } },
+      { invoice: { ...base.resource, due_amount: { currency_code: "EUR", value: "1.00" } } },
+      { invoice: { ...base.resource, due_amount: { currency_code: "USD", value: "0.00" } } },
+      { invoice: { ...base.resource, due_amount: { currency_code: "USD", value: "-1" } } },
+      { invoice: { ...base.resource, detail: { payment_term: { due_date: "2026-11-07" } } } },
+      { invoice: { ...base.resource, detail: { payment_term: { due_date: "2026-02-30" } } } },
+    ];
+    for (const resource of invalid) {
+      const calls: string[] = [];
+      await assert.rejects(ingestPayPalWebhook(store, adapter("SUCCESS", calls), { ...base, resource }, headers(), now));
+      assert.equal(calls.length, 2, "Only OAuth/signature verification, no reporting read");
+    }
+    const rejectedCalls: string[] = [];
+    await assert.rejects(ingestPayPalWebhook(() => { throw new Error("Must not open DB"); }, adapter("FAILURE", rejectedCalls), nested, headers(), now), /signature/);
+    assert.equal(store.db.prepare("SELECT COUNT(*) AS n FROM webhook_events").get()!.n, 0);
+  } finally { store.close(); }
+});
