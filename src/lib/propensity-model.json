@@ -1,0 +1,78 @@
+{
+  "modelVersion": "synthetic-logistic-v1",
+  "source": "synthetic",
+  "featureNames": [
+    "intercept",
+    "tenure_36",
+    "failures_4",
+    "overdue_30",
+    "monthly_10000",
+    "invoice_signal",
+    "sensitive_signal"
+  ],
+  "trainingSeed": 20261001,
+  "calibrationSeed": 20261015,
+  "reservedEvaluationSeed": 20261103,
+  "trainingCustomers": 600,
+  "calibrationCustomers": 240,
+  "trainingObservations": 3600,
+  "calibrationObservations": 1440,
+  "epochs": 500,
+  "calibrationBrierScore": 0.22087284,
+  "coefficients": {
+    "pause": [
+      -0.3324992632,
+      0.2528079511,
+      1.2853223876,
+      -1.0201015079,
+      -0.0261273528,
+      0.0763697338,
+      -1.2863146207
+    ],
+    "downgrade_offer": [
+      -0.7825660103,
+      0.4081340801,
+      0.9575757694,
+      -0.2989621614,
+      0.5289352988,
+      -0.2643170883,
+      -1.4231050994
+    ],
+    "early_pay_discount": [
+      -0.2877616521,
+      -0.3363071038,
+      0.2166203701,
+      -0.8412664334,
+      -0.0733095355,
+      1.1108348838,
+      -1.3286047545
+    ],
+    "merchant_reminder": [
+      0.7674747254,
+      -0.1663632845,
+      -1.3154732866,
+      -1.5416927381,
+      0.1971640018,
+      -0.1667772517,
+      -1.1416595485
+    ],
+    "goodwill_refund": [
+      -0.4042727831,
+      1.0896278205,
+      0.6939267911,
+      -0.0799830288,
+      0.21301355,
+      0.0852846314,
+      -1.7276368382
+    ],
+    "human_save_task": [
+      -0.7073105454,
+      0.7294362763,
+      0.009036358,
+      -0.150303288,
+      0.2240997745,
+      -0.0058454929,
+      -0.10561749
+    ]
+  }
+}
