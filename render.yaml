@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: keepwell
+    runtime: node
+    plan: starter
+    buildCommand: npm ci && npm run build
+    # Optional paid deployment only; not used by the local judge walkthrough.
+    startCommand: npm run start:host
+    healthCheckPath: /api/health
+    disk:
+      name: keepwell-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.0
+      - key: KEEPWELL_DB_PATH
+        value: /var/data/keepwell.sqlite
+      - key: KEEPWELL_DEMO_ENABLED
+        value: "true"
+      - key: NEXT_TELEMETRY_DISABLED
+        value: "1"

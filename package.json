@@ -1,0 +1,24 @@
+{
+  "name": "paypal-keepwell",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0 <25" },
+  "scripts": {
+    "dev": "next dev --webpack --hostname 127.0.0.1",
+    "build": "next build --webpack",
+    "start": "next start --hostname 127.0.0.1",
+    "start:host": "next start --hostname 0.0.0.0",
+    "seed": "tsx scripts/seed.ts",
+    "demo:simulate": "tsx scripts/simulate.ts",
+    "train": "tsx scripts/train.ts",
+    "compare": "tsx scripts/compare.ts",
+    "paypal:check": "node --env-file-if-exists=.env.local --import tsx scripts/paypal-check.ts",
+    "paypal:qualify": "node --env-file-if-exists=.env.local --import tsx scripts/paypal-qualify.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:e2e": "tsx --test tests/e2e/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": { "next": "16.4.3", "react": "19.3.1", "react-dom": "19.3.1" },
+  "devDependencies": { "@types/node": "^24.0.0", "@types/react": "^19.0.0", "@types/react-dom": "^19.0.0", "tsx": "4.23.15", "typescript": "7.0.2" }
+}
